@@ -70,6 +70,7 @@ class TvSpotlightScaffold extends StatelessWidget {
     required this.resolveClient,
     required this.foreground,
     this.hideSpoilers,
+    this.showContinueWatchingServerSource = false,
   });
 
   final List<MediaHub> hubs;
@@ -78,6 +79,8 @@ class TvSpotlightScaffold extends StatelessWidget {
   final TvSpotlightClientResolver resolveClient;
   final Widget foreground;
   final bool? hideSpoilers;
+  /// Show the source server/library for items in the combined Continue Watching rail.
+  final bool showContinueWatchingServerSource;
 
   @override
   Widget build(BuildContext context) {
@@ -86,6 +89,12 @@ class TvSpotlightScaffold extends StatelessWidget {
     final scale = TvLayoutConstants.scaleForSize(size);
     final railSize = MainScreenFocusScope.foregroundSizeOf(context);
     final fullBleedWidth = MainScreenFocusScope.fullBleedWidthOf(context);
+    final continueWatchingKeys = <String>{
+      if (showContinueWatchingServerSource)
+        for (final hub in hubs)
+          if (hub.id == 'continue_watching')
+            for (final item in hub.items) item.globalKey,
+    };
     final railHeight = hubs.isEmpty
         ? 0.0
         : TvBrowseRailLayout.estimateHeight(
@@ -127,6 +136,7 @@ class TvSpotlightScaffold extends StatelessWidget {
                       return _CatalogSpotlightBackground(
                         item: spotlight,
                         client: resolveClient(spotlight),
+                        showSourceLabel: spotlight != null && continueWatchingKeys.contains(spotlight.globalKey),
                         hideSpoilers: hideSpoilers ?? settings.read(SettingsService.hideSpoilers),
                         contentTop: spotlightTop,
                         contentBottom: spotlightBottom,
@@ -152,6 +162,7 @@ class _CatalogSpotlightBackground extends StatefulWidget {
   const _CatalogSpotlightBackground({
     required this.item,
     required this.client,
+    required this.showSourceLabel,
     required this.hideSpoilers,
     required this.contentTop,
     required this.contentBottom,
@@ -161,6 +172,7 @@ class _CatalogSpotlightBackground extends StatefulWidget {
 
   final MediaItem? item;
   final MediaServerClient? client;
+  final bool showSourceLabel;
   final bool hideSpoilers;
   final double contentTop;
   final double contentBottom;
@@ -247,6 +259,18 @@ class _CatalogSpotlightBackgroundState extends State<_CatalogSpotlightBackground
     );
   }
 
+  String? get _sourceLabel {
+    if (!widget.showSourceLabel) return null;
+    final item = widget.item;
+    if (item == null) return null;
+    final namedOnItem = item.serverName?.trim();
+    final namedOnClient = widget.client?.serverName?.trim();
+    final serverName = namedOnItem != null && namedOnItem.isNotEmpty ? namedOnItem : namedOnClient;
+    if (serverName == null || serverName.isEmpty) return null;
+    final library = item.libraryTitle?.trim();
+    return library == null || library.isEmpty ? serverName : '$serverName • $library';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -255,6 +279,7 @@ class _CatalogSpotlightBackgroundState extends State<_CatalogSpotlightBackground
       item: _renderItem,
       client: widget.client,
       hideSpoilers: widget.hideSpoilers,
+      sourceLabel: _sourceLabel,
       contentTop: widget.contentTop,
       contentBottom: widget.contentBottom,
       contentLeft: widget.contentLeft,
