@@ -46,12 +46,36 @@ jobs:
           grep -F 'applicationId = "com.hecke92.plezytest"' android/app/build.gradle.kts
           sed -i 's/android:label="Plezy"/android:label="Plezy Test"/' android/app/src/main/AndroidManifest.xml
 
-      - name: Build release APKs signed with Android debug key (testing only)
+      - name: Generate temporary test signing key
+        shell: bash
+        run: |
+          keytool -genkeypair -noprompt \
+            -keystore android/app/plezy-test-keystore.jks \
+            -storepass plezytest123 -keypass plezytest123 \
+            -alias plezytest -keyalg RSA -keysize 3072 -validity 3650 \
+            -dname "CN=Plezy Fire TV Test,O=Personal Test,C=DE"
+          cat > android/key.properties <<'EOF'
+          storePassword=plezytest123
+          keyPassword=plezytest123
+          keyAlias=plezytest
+          storeFile=plezy-test-keystore.jks
+          EOF
+
+      - name: Build signed release APKs for testing
         run: |
           flutter build apk --release --split-per-abi \
             --dart-define=ENABLE_UPDATE_CHECK=false \
             --dart-define=ENABLE_SENTRY=false \
             --dart-define=ENABLE_DONATIONS=false
+
+      - name: Verify APK signatures before publishing
+        shell: bash
+        run: |
+          APK_SIGNER="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$APK_SIGNER" && test -x "$APK_SIGNER"
+          for apk in build/app/outputs/flutter-apk/app-{armeabi-v7a,arm64-v8a}-release.apk; do
+            "$APK_SIGNER" verify --verbose "$apk"
+          done
 
       - name: Upload installable APKs
         uses: actions/upload-artifact@v4
