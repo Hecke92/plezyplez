@@ -33,6 +33,8 @@ class TvSpotlightBackground extends StatelessWidget {
   final bool showInfo;
   final String? Function(String? artworkPath)? localArtworkPathResolver;
   final bool allowNetwork;
+  /// Optional server/library label below the TV spotlight metadata.
+  final String? sourceLabel;
 
   /// Optional caller-owned fact appended to the existing metadata line.
   final Widget? metadataTrailing;
@@ -49,6 +51,7 @@ class TvSpotlightBackground extends StatelessWidget {
     this.showInfo = true,
     this.localArtworkPathResolver,
     this.allowNetwork = true,
+    this.sourceLabel,
     this.metadataTrailing,
   });
 
@@ -206,6 +209,19 @@ class TvSpotlightBackground extends StatelessWidget {
         _buildLogoOrTitle(context, media, title, width),
         SizedBox(height: _sectionGap(scale)),
         _buildMetadataLine(context, media),
+        if (sourceLabel != null && sourceLabel!.isNotEmpty) ...[
+          SizedBox(height: 4 * scale),
+          Text(
+            sourceLabel!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: colorScheme.onSurface.withValues(alpha: 0.76),
+              fontSize: 15 * scale,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
         if (summary != null && summary.isNotEmpty) ...[
           SizedBox(height: _sectionGap(scale)),
           Text(
