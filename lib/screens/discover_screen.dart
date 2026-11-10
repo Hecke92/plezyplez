@@ -1128,6 +1128,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
     return TvSpotlightScaffold(
       hubs: browseHubs,
+      // Reveal the origin of mixed Continue Watching media on TV.
+      showContinueWatchingServerSource:
+          showServerNameOnHubs && context.read<MultiServerProvider>().totalServerCount > 1,
       spotlightListenable: _spotlight,
       resolveSpotlight: () => _spotlight.resolve(browseHubs),
       resolveClient: _getMediaClientForItem,
