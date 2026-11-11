@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -5,6 +7,7 @@ import '../i18n/strings.g.dart';
 import '../media/catalog_item_ref.dart';
 import '../media/media_hub.dart';
 import '../media/media_item.dart';
+import '../media/media_item_types.dart';
 import '../media/media_server_client.dart';
 import '../models/catalog/catalog_item.dart';
 import '../navigation/main_screen_scope.dart';
@@ -188,10 +191,17 @@ class _CatalogSpotlightBackgroundState extends State<_CatalogSpotlightBackground
   MediaItem? _renderItem;
   Color? _accentColor;
 
+  // A Jellyfin/Emby Continue Watching row carries no library identity. Resolve
+  // it only for the focused item, not for the entire row, and reuse results
+  // while navigating back and forth with the remote.
+  final Map<String, String> _libraryTitleCache = {};
+  final Set<String> _pendingLibraryLookups = {};
+
   @override
   void initState() {
     super.initState();
     _rehydrateCatalogItem();
+    _maybeResolveSourceLibrary();
   }
 
   @override
@@ -202,6 +212,45 @@ class _CatalogSpotlightBackgroundState extends State<_CatalogSpotlightBackground
     } else if (widget.targetWidthPx != oldWidget.targetWidthPx) {
       _projectArtwork();
     }
+    if (!identical(widget.item, oldWidget.item) ||
+        !identical(widget.client, oldWidget.client) ||
+        widget.showSourceLabel != oldWidget.showSourceLabel) {
+      _maybeResolveSourceLibrary();
+    }
+  }
+
+  void _maybeResolveSourceLibrary() {
+    final item = widget.item;
+    final client = widget.client;
+    if (!widget.showSourceLabel || item == null || client == null) return;
+    // Plex rows already have their library metadata; only MediaBrowser rows
+    // require an additional ancestry lookup.
+    if (item.backend != MediaBackend.jellyfin && item.backend != MediaBackend.emby) return;
+    if (item.libraryTitle?.trim().isNotEmpty ?? false) return;
+
+    final key = item.globalKey;
+    if (_libraryTitleCache.containsKey(key) || !_pendingLibraryLookups.add(key)) return;
+    unawaited(_loadSourceLibrary(item, client, key));
+  }
+
+  Future<void> _loadSourceLibrary(MediaItem item, MediaServerClient client, String key) async {
+    String? title;
+    try {
+      // The Jellyfin/Emby client uses /Items/{id}/Ancestors to identify the
+      // owning CollectionFolder. This is best-effort and never blocks playback.
+      title = (await client.stampLibrary(item)).libraryTitle?.trim();
+    } catch (_) {
+      // Keep showing the server alone if the lookup is unavailable.
+    }
+
+    if (!mounted) return;
+    _pendingLibraryLookups.remove(key);
+    if (title == null || title.isEmpty) return;
+    if (_libraryTitleCache.length >= 64) {
+      _libraryTitleCache.remove(_libraryTitleCache.keys.first);
+    }
+    _libraryTitleCache[key] = title;
+    if (widget.showSourceLabel && widget.item?.globalKey == key) setState(() {});
   }
 
   void _rehydrateCatalogItem() {
@@ -267,7 +316,10 @@ class _CatalogSpotlightBackgroundState extends State<_CatalogSpotlightBackground
     final namedOnClient = widget.client?.serverName?.trim();
     final serverName = namedOnItem != null && namedOnItem.isNotEmpty ? namedOnItem : namedOnClient;
     if (serverName == null || serverName.isEmpty) return null;
-    final library = item.libraryTitle?.trim();
+    final directLibrary = item.libraryTitle?.trim();
+    final library = directLibrary != null && directLibrary.isNotEmpty
+        ? directLibrary
+        : _libraryTitleCache[item.globalKey];
     return library == null || library.isEmpty ? serverName : '$serverName • $library';
   }
 
